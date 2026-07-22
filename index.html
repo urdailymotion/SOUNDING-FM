@@ -1,0 +1,1818 @@
+/**
+ * ==========================================
+ * ZettBOT - Lube Operations Management
+ * Backend Logic, Auto-Setup & Dynamic Database
+ * ==========================================
+ */
+
+// Folder tujuan eviden PDF sesuai link yang diberikan.
+const EVIDENCE_FOLDER_ID = '1Nm4eOZlHF2jpv3Rv48NZEnCCpg1d4OL6';
+const APP_BUILD_VERSION = 'LF-20260721-11-NATIVE-CAMERA';
+
+// Scope wajib untuk membaca/menulis spreadsheet dan menyimpan PDF ke Google Drive.
+// Pastikan appsscript.json versi V3 juga ditempel agar scope ini benar-benar diminta.
+const OAUTH_SCOPE_SPREADSHEETS = 'https://www.googleapis.com/auth/spreadsheets';
+const OAUTH_SCOPE_DRIVE = 'https://www.googleapis.com/auth/drive';
+
+// PIN wajib untuk menghapus riwayat transaksi.
+// Validasi dilakukan di backend agar tidak dapat dilewati dari browser.
+const HISTORY_DELETE_PIN = '123321';
+
+function setup() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  const createSheetWithData = (name, headers, data) => {
+    let sheet = ss.getSheetByName(name);
+    if (!sheet) {
+      sheet = ss.insertSheet(name);
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight("bold").setBackground("#f3f4f6");
+      if (data && data.length > 0) {
+        sheet.getRange(2, 1, data.length, data[0].length).setValues(data);
+      }
+    }
+    return sheet;
+  };
+
+  createSheetWithData("DATA_HEADER", ["ID_Transaksi", "Kategori", "Timestamp", "Tanggal", "Jam", "Operator", "Shift", "Lokasi_ID", "Link_Eviden"], []);
+  createSheetWithData("DATA_DETAIL", ["ID_Transaksi", "Part_Number", "Description", "Sounding", "Qty_Tera", "FM_1", "FM_2", "FM_3", "FM_4", "FM_5", "FM_6"], []);
+
+  // --- DATABASE MAPPING BARU (FULL DATA DARI LAMPIRAN) ---
+  
+  let storageIdCounter = 1;
+  const rawStorageMap = [
+    // LS01
+    ["LS01", "1400000262", "OLI MEDITRAN S MIN 10W CF-2/SF (IBC)"],
+    ["LS01", "1400000270", "OLI TRANSLIK HD 30 MIN 30 (IBC)"],
+    ["LS01", "1400000088", "OLI MEDITRAN SX PLUS 15W-40 CI4 (IBC)"],
+    ["LS01", "1400000291", "OLI TURALIK XT 46 (IBC)"],
+    ["LS01", "1400000098", "SUPER COOLANT,SYCG-AF-NACDMP 200 Lt"],
+    // LS02
+    ["LS02", "1400000088", "OLI MEDITRAN SX PLUS 15W-40 CI4 (IBC)"],
+    ["LS02", "1400000098", "SUPER COOLANT,SYCG-AF-NACDMP 200 Lt"],
+    ["LS02", "1400000164", "GREASE EP2 GADUS S2 V220_2 (BIN)"],
+    ["LS02", "1400000270", "OLI TRANSLIK HD 30 MIN 30 (IBC)"],
+    ["LS02", "1400000262", "OLI MEDITRAN S MIN 10W CF-2/SF (IBC)"],
+    ["LS02", "1400000291", "OLI TURALIK XT 46 (IBC)"],
+    // LS03
+    ["LS03", "1400000088", "OLI MEDITRAN SX PLUS 15W-40 CI4 (IBC)"],
+    ["LS03", "1400000098", "SUPER COOLANT,SYCG-AF-NACDMP 200 Lt"],
+    ["LS03", "1400000262", "OLI MEDITRAN S MIN 10W CF-2/SF (IBC)"],
+    ["LS03", "1400000270", "OLI TRANSLIK HD 30 MIN 30 (IBC)"],
+    ["LS03", "1400000291", "OLI TURALIK XT 46 (IBC)"],
+    // LS04
+    ["LS04", "1400000088", "OLI MEDITRAN SX PLUS 15W-40 CI4 (IBC)"],
+    ["LS04", "1400000098", "SUPER COOLANT,SYCG-AF-NACDMP 200 Lt"],
+    ["LS04", "1400000262", "OLI MEDITRAN S MIN 10W CF-2/SF (IBC)"],
+    ["LS04", "1400000270", "OLI TRANSLIK HD 30 MIN 30 (IBC)"],
+    ["LS04", "1400000037", "OLI SHELL RIMULA R2 30 (DRUM)"],
+    // LS05
+    ["LS05", "1400000088", "OLI MEDITRAN SX PLUS 15W-40 CI4 (IBC)"],
+    ["LS05", "1400000098", "SUPER COOLANT,SYCG-AF-NACDMP 200 Lt"],
+    ["LS05", "1400000262", "OLI MEDITRAN S MIN 10W CF-2/SF (IBC)"],
+    ["LS05", "1400000270", "OLI TRANSLIK HD 30 MIN 30 (IBC)"],
+    ["LS05", "1400000037", "OLI SHELL RIMULA R2 30 (DRUM)"],
+    // LS06
+    ["LS06", "1400000088", "OLI MEDITRAN SX PLUS 15W-40 CI4 (IBC)"],
+    ["LS06", "1400000098", "SUPER COOLANT,SYCG-AF-NACDMP 200 Lt"],
+    ["LS06", "1400000262", "OLI MEDITRAN S MIN 10W CF-2/SF (IBC)"],
+    ["LS06", "1400000263", "OLI RORED HDA MIN 85W-140 GL-5 (IBC)"],
+    ["LS06", "1400000306", "OLI RORED EPA MIN 90 GL-4 209L (DRUM)"],
+    ["LS06", "1400000294", "OLISHELLSPIRAXS3AD80W-90(DRUM)"],
+    // LS07
+    ["LS07", "1400000098", "SUPER COOLANT,SYCG-AF-NACDMP 200 Lt"],
+    ["LS07", "1400000088", "OLI MEDITRAN SX PLUS 15W-40 CI4 (IBC)"],
+    ["LS07", "1400000263", "OLI RORED HDA MIN 85W-140 GL-5 (IBC)"],
+    ["LS07", "1400000303", "ENGINE OIL - MB2283 A0019898001/17FBGN"],
+    // LS08
+    ["LS08", "1400000073", "OLI SHELL SPIRAX S4 CX 50 (DRUM)"],
+    ["LS08", "1400000088", "OLI MEDITRAN SX PLUS 15W-40 CI4 (IBC)"],
+    ["LS08", "1400000338", "OLI SHELL SPIRAX S6 CXME 5W30"],
+    ["LS08", "1400000270", "OLI TRANSLIK HD 30 MIN 30 (IBC)"],
+    // LS09
+    ["LS09", "1400000088", "OLIMEDITRANSXPLUS15W-40CI4(IBC)"],
+    ["LS09", "1400000270", "OLI TRANSLIK HD 30 MIN 30 (IBC)"],
+    ["LS09", "1400000262", "OLI MEDITRAN S MIN 10W CF-2/SF (IBC)"],
+    ["LS09", "1400000098", "SUPER COOLANT,SYCG-AF-NACDMP 200 Lt"],
+    ["LS09", "1400000291", "OLI TURALIK XT 46 (IBC)"],
+    // LS10
+    ["LS10", "1400000088", "OLIMEDITRANSXPLUS15W-40CI4(IBC)"],
+    ["LS10", "1400000270", "OLI TRANSLIK HD 30 MIN 30 (IBC)"],
+    ["LS10", "1400000262", "OLI MEDITRAN S MIN 10W CF-2/SF (IBC)"],
+    // LS11
+    ["LS11", "1400000088", "OLIMEDITRANSXPLUS15W-40CI4(IBC)"],
+    ["LS11", "1400000270", "OLITRANSLIKHD30MIN30(IBC)"],
+    ["LS11", "1400000262", "OLIMEDITRANSMIN10WCF-2/SF(IBC)"],
+    ["LS11", "1400000291", "OLITURALIKXT46(IBC)"],
+    ["LS11", "1400000263", "OLIROREDHDAMIN85W-140GL-5(IBC)"],
+    ["LS11", "1400000267", "OLIROREDHDAMIN90GL-5209L(80W90)"],
+    ["LS11", "1400000306", "OLIROREDEPAMIN90GL-4209L(MA80)"],
+    ["LS11", "1400000098", "SUPERCOOLANT,KOMATSUSYCG-AF-NACDM"],
+    ["LS11", "1400000338", "OLISHELLSPIRAXS6CXME5W30(DRUM)"],
+    ["LS11", "1400000073", "OLISHELLSPIRAXS4CX50(DRUM)"],
+    ["LS11", "1400000303", "ENGINEOIL-15w-40(SWI)"]
+  ];
+  
+  // Format Array: [ID, Lokasi, PN, Desc, Kapasitas_Max, Stok_Aktual, Konversi]
+  const defaultStorageMap = rawStorageMap.map(row => ["MS_" + (storageIdCounter++), row[0], row[1], row[2], 1000, 1000, 10]);
+
+  let truckIdCounter = 1;
+  const rawTruckMap = [
+    // LT2525
+    ["LT2525", "1400000088", "OLI MEDITRAN SX PLUS 15W-40 CI4 (IBC)"],
+    ["LT2525", "1400000098", "SUPER COOLANT,SYCG-AF-NACDMP 200 Lt"],
+    ["LT2525", "1400000291", "OLI TURALIK XT 46 (IBC)"],
+    ["LT2525", "1400000262", "OLI MEDITRAN S MIN 10W CF-2/SF (IBC)"],
+    ["LT2525", "1400000270", "OLI TRANSLIK HD 30 MIN 30 (IBC)"],
+    // LT2510
+    ["LT2510", "1400000088", "OLI MEDITRAN SX PLUS 15W-40 CI4 (IBC)"],
+    ["LT2510", "1400000098", "SUPER COOLANT,SYCG-AF-NACDMP 200 Lt"],
+    ["LT2510", "1400000270", "OLI TRANSLIK HD 30 MIN 30 (IBC)"],
+    ["LT2510", "1400000262", "OLI MEDITRAN S MIN 10W CF-2/SF (IBC)"],
+    ["LT2510", "1400000037", "OLI SHELL RIMULA R2 30 (DRUM)"],
+    // LT2518
+    ["LT2518", "1400000088", "OLI MEDITRAN SX PLUS 15W-40 CI4 (IBC)"],
+    ["LT2518", "1400000098", "SUPER COOLANT,SYCG-AF-NACDMP 200 Lt (1)"],
+    ["LT2518", "1400000291", "OLI TURALIK XT 46 (IBC)"],
+    ["LT2518", "1400000270", "OLI TRANSLIK HD 30 MIN 30 (IBC)"],
+    ["LT2518", "1400000262", "OLI MEDITRAN S MIN 10W CF-2/SF (IBC)"],
+    // LT2620
+    ["LT2620", "1400000088", "OLI MEDITRAN SX PLUS 15W-40 CI4 (IBC)"],
+    ["LT2620", "1400000291", "OLI TURALIK XT 46 (IBC)"],
+    ["LT2620", "1400000270", "OLI TRANSLIK HD 30 MIN 30 (IBC) 2"],
+    ["LT2620", "1400000262", "OLI MEDITRAN S MIN 10W CF-2/SF (IBC)"],
+    ["LT2620", "1400000098", "SUPER COOLANT,SYCG-AF-NACDMP 200 Lt"],
+    // LT2621
+    ["LT2621", "1400000098", "SUPER COOLANT,SYCG-AF-NACDMP 200 Lt (1)"],
+    ["LT2621", "1400000098", "SUPER COOLANT,SYCG-AF-NACDMP 200 Lt (2)"],
+    ["LT2621", "1400000088", "OLI MEDITRAN SX PLUS 15W-40 CI4 (IBC)"],
+    ["LT2621", "1400000263", "OLI RORED HDA MIN 85W-140 GL-5 (IBC)"],
+    ["LT2621", "1400000291", "OLI TURALIK XT 46 (IBC)"],
+    // LT52506AMM
+    ["LT52506AMM", "1400000088", "OLI MEDITRAN SX PLUS 15W-40 CI4 (IBC)"],
+    ["LT52506AMM", "1400000098", "SUPER COOLANT,SYCG-AF-NACDMP 200 Lt"],
+    ["LT52506AMM", "1400000270", "OLI TRANSLIK HD 30 MIN 30 (IBC)"],
+    ["LT52506AMM", "1400000262", "OLI MEDITRAN S MIN 10W CF-2/SF (IBC)"],
+    ["LT52506AMM", "1400000338", "OLI SHELL SPIRAX S6 CXME 5W30 (DRUM)"],
+    // LT2608
+    ["LT2608", "1400000303", "ENGINEOIL-15w-40(SWI)200KG"],
+    ["LT2608", "1400000294", "OLISHELLSPIRAXS3AD80W-90(DRUM)"],
+    ["LT2608", "1400000263", "OLIROREDHDAMIN85W-140GL-5(IBC)"],
+    ["LT2608", "1400000088", "OLIMEDITRANSXPLUS15W-40CI4(IBC)"],
+    ["LT2608", "1400000098", "SUPERCOOLANT,SYCG-AF-NACDMP200Lt"],
+    // LT2622
+    ["LT2622", "1400000139", "KGO DRUM ENGINE OIL (15W40-DH1/D209)"],
+    ["LT2622", "1400000349", "OLI HYDRAULIC HO-68-HM/D209"],
+    ["LT2622", "1400000326", "OMALA S2 GX 220"],
+    ["LT2622", "1400000350", "OMALA S2 GX 150"],
+    ["LT2622", "1400000098", "SUPER COOLANT,SYCG-AF-NACDMP 200 Lt"],
+    // LT52605AMM
+    ["LT52605AMM", "1400000088", "OLI MEDITRAN SX PLUS 15W-40 CI4 (IBC)"],
+    ["LT52605AMM", "1400000098", "SUPER COOLANT,SYCG-AF-NACDMP 200 Lt"],
+    ["LT52605AMM", "1400000270", "OLI TRANSLIK HD 30 MIN 30 (IBC)"],
+    ["LT52605AMM", "1400000262", "OLI MEDITRAN S MIN 10W CF-2/SF (IBC)"],
+    ["LT52605AMM", "1400000263", "OLI RORED HDA MIN 85W-140 GL-5 (IBC)"],
+    // LT52507AMM
+    ["LT52507AMM", "1400000088", "OLI MEDITRAN SX PLUS 15W-40 CI4 (IBC)"],
+    ["LT52507AMM", "1400000098", "SUPER COOLANT,SYCG-AF-NACDMP 200 Lt"],
+    ["LT52507AMM", "1400000270", "OLI TRANSLIK HD 30 MIN 30 (IBC)"],
+    ["LT52507AMM", "1400000262", "OLI MEDITRAN S MIN 10W CF-2/SF (IBC)"],
+    ["LT52507AMM", "1400000037", "OLI SHELL RIMULA R2 30 (DRUM)"],
+    // LT2601
+    ["LT2601", "1400000088", "OLI MEDITRAN SX PLUS 15W-40 CI4 (IBC)"],
+    ["LT2601", "1400000098", "SUPER COOLANT,SYCG-AF-NACDMP 200 Lt"],
+    ["LT2601", "1400000338", "OLI SHELL SPIRAX S6 CXME 5W30 (DRUM)"],
+    ["LT2601", "1400000270", "OLI TRANSLIK HD 30 MIN 30 (IBC)"],
+    ["LT2601", "1400000262", "OLI MEDITRAN S MIN 10W CF-2/SF (IBC)"],
+    // LT2606
+    ["LT2606", "1400000262", "OLI MEDITRAN S MIN 10W CF-2/SF (IBC)"],
+    ["LT2606", "1400000088", "OLI MEDITRAN SX PLUS 15W-40 CI4 (IBC)"],
+    ["LT2606", "1400000098", "SUPERCOOLANT,SYCG-AF-NACDMP200Lt"],
+    ["LT2606", "1400000263", "OLI RORED HDA MIN 85W-140 GL-5 (IBC)"],
+    ["LT2606", "1400000384", "HYD OIL AE 46 ( 208 L) SANY"],
+    // LT2530
+    ["LT2530", "1400000088", "OLI MEDITRAN SX PLUS 15W-40 CI4 (IBC)"],
+    ["LT2530", "1400000098", "SUPER COOLANT,SYCG-AF-NACDMP 200 Lt"],
+    ["LT2530", "1400000270", "OLI TRANSLIK HD 30 MIN 30 (IBC)"],
+    ["LT2530", "1400000262", "OLI MEDITRAN S MIN 10W CF-2/SF (IBC)"],
+    ["LT2530", "1400000037", "OLI SHELL RIMULA R2 30 (DRUM)"],
+    // LT2614
+    ["LT2614", "1400000088", "OLI MEDITRAN SX PLUS 15W-40 CI4 (IBC)"],
+    ["LT2614", "1400000098", "SUPER COOLANT,SYCG-AF-NACDMP 200 Lt"],
+    ["LT2614", "1400000270", "OLI TRANSLIK HD 30 MIN 30 (IBC)"],
+    ["LT2614", "1400000262", "OLI MEDITRAN S MIN 10W CF-2/SF (IBC)"],
+    ["LT2614", "1400000289", "GREASEGADUSS2MOLYV460D_2(BIN)"],
+    // LT2515
+    ["LT2515", "1400000088", "OLI MEDITRAN SX PLUS 15W-40 CI4 (IBC)"],
+    ["LT2515", "1400000301", "OLI TRANSLIK HD 60 MIN 60 (IBC)"],
+    ["LT2515", "1400000098", "SUPER COOLANT,SYCG-AF-NACDMP 200 Lt 2"],
+    ["LT2515", "1400000270", "OLI TRANSLIK HD 30 MIN 30 (IBC)"],
+    ["LT2515", "1400000262", "OLI MEDITRAN S MIN 10W CF-2/SF (IBC)"],
+    ["LT2515", "1400000289", "GREASEGADUSS2V460D_2(BIN)"],
+    // LT2514
+    ["LT2514", "1400000088", "OLI MEDITRAN SX PLUS 15W-40 CI4 (IBC)"],
+    ["LT2514", "1400000098", "SUPER COOLANT,SYCG-AF-NACDMP 200 Lt"],
+    ["LT2514", "1400000270", "OLI TRANSLIK HD 30 MIN 30 (IBC)"],
+    ["LT2514", "1400000262", "OLI MEDITRAN S MIN 10W CF-2/SF (IBC)"],
+    ["LT2514", "1400000291", "OLI TURALIK XT 46 (IBC)"],
+    ["LT2514", "1400000289", "GREASEGADUSS2V460D_2(BIN)"]
+  ];
+
+  // Format Array: [ID, Lokasi, PN, Desc, Kapasitas_Max, Stok_Aktual, Konversi]
+  const defaultTruckMap = rawTruckMap.map(row => ["MT_" + (truckIdCounter++), row[0], row[1], row[2], 1000, 1000, 10]);
+
+  createSheetWithData("MAPPING_STORAGE", ["ID_Mapping", "SLOC", "Part_Number", "Description", "Kapasitas_Max", "Stok_Aktual", "Konversi_Liter_per_cm"], defaultStorageMap);
+  createSheetWithData("MAPPING_TRUCK", ["ID_Mapping", "ID_Truck", "Part_Number", "Description", "Kapasitas_Max", "Stok_Aktual", "Konversi_Liter_per_cm"], defaultTruckMap);
+  createSheetWithData("TERA_STORAGE", ["Tinggi_cm", "Volume_Liter"], []);
+  createSheetWithData("TERA_TRUCK", ["Kapasitas_Tangki", "Tinggi_mm", "Volume_Liter"], []);
+
+  SpreadsheetApp.getUi().alert("Setup Berhasil! Sheet Database MAPPING_STORAGE, MAPPING_TRUCK, dan TERA telah disiapkan.");
+}
+
+/**
+ * ==========================================
+ * FUNGSI AUTO-DATABASE (UPGRADE)
+ * ==========================================
+ * Menambahkan kolom kapasitas, stok, dan konversi ke database lama secara otomatis.
+ */
+function upgradeDatabase() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheets = ["MAPPING_STORAGE", "MAPPING_TRUCK"];
+  
+  sheets.forEach(sheetName => {
+    let sheet = ss.getSheetByName(sheetName);
+    if (sheet) {
+      let lr = sheet.getLastRow();
+      let lc = sheet.getLastColumn();
+      
+      // Update Header jika kurang dari 7 kolom
+      if (lc < 7) {
+        sheet.getRange(1, 5, 1, 3).setValues([["Kapasitas_Max", "Stok_Aktual", "Konversi_Liter_per_cm"]]);
+        sheet.getRange(1, 1, 1, 7).setFontWeight("bold").setBackground("#D9EAD3");
+      }
+      
+      // Update isi data
+      if (lr > 1) {
+        let data = sheet.getRange(2, 1, lr - 1, Math.max(lc, 7)).getValues();
+        let updated = false;
+        
+        for (let i = 0; i < data.length; i++) {
+          if (!data[i][4]) { data[i][4] = 1000; updated = true; } // Kapasitas
+          if (!data[i][5]) { data[i][5] = 1000; updated = true; } // Stok
+          if (!data[i][6]) { data[i][6] = 10; updated = true; }   // Konversi
+        }
+        
+        if (updated) {
+          // Hanya tulis balik ke kolom 5, 6, 7 (Kapasitas, Stok, Konversi)
+          let toWrite = data.map(row => [row[4], row[5], row[6]]);
+          sheet.getRange(2, 5, lr - 1, 3).setValues(toWrite);
+        }
+      }
+    }
+  });
+  
+  // Buat sheet tera jika belum ada
+  if (!ss.getSheetByName("TERA_STORAGE")) {
+    let s1 = ss.insertSheet("TERA_STORAGE");
+    s1.getRange(1, 1, 1, 2).setValues([["Tinggi_cm", "Volume_Liter"]]).setFontWeight("bold").setBackground("#D9EAD3");
+  }
+  if (!ss.getSheetByName("TERA_TRUCK")) {
+    let s2 = ss.insertSheet("TERA_TRUCK");
+    s2.getRange(1, 1, 1, 3).setValues([["Kapasitas_Tangki", "Tinggi_mm", "Volume_Liter"]]).setFontWeight("bold").setBackground("#D9EAD3");
+  }
+  
+  let detailSheet = ss.getSheetByName("DATA_DETAIL");
+  if (detailSheet && detailSheet.getLastColumn() < 6) {
+    detailSheet.getRange(1, 6).setValue("Qty_Tera").setFontWeight("bold").setBackground("#f3f4f6");
+  }
+
+  // Pastikan kolom Link_Eviden tersedia pada database lama.
+  let headerSheet = ss.getSheetByName("DATA_HEADER");
+  if (headerSheet) {
+    if (headerSheet.getLastColumn() < 9 || headerSheet.getRange(1, 9).getValue() !== "Link_Eviden") {
+      headerSheet.getRange(1, 9).setValue("Link_Eviden").setFontWeight("bold").setBackground("#f3f4f6");
+    }
+  }
+
+  SpreadsheetApp.getUi().alert("Upgrade Database Selesai! Tabel Tera, Qty_Tera, dan Link_Eviden telah diperbarui.");
+}
+
+function doGet(e) {
+  return HtmlService.createHtmlOutputFromFile('Index')
+    .setTitle('Lube Ops Dashboard')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1.0');
+}
+
+/**
+ * ==========================================
+ * FUNGSI APLIKASI (FETCHING MASTER DATA)
+ * ==========================================
+ */
+function getAppConfig() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (!ss) {
+      throw new Error('Spreadsheet aktif tidak ditemukan. Pastikan Apps Script terikat pada spreadsheet database yang benar.');
+    }
+
+    const storageMap = {};
+    const truckMap = {};
+    const listSloc = new Set();
+    const listTruck = new Set();
+
+    const sheetSloc = ss.getSheetByName("MAPPING_STORAGE");
+    if (sheetSloc && sheetSloc.getLastRow() > 1) {
+      const rowCount = sheetSloc.getLastRow() - 1;
+      const dataSloc = sheetSloc.getRange(2, 1, rowCount, 7).getValues();
+      dataSloc.forEach(row => {
+        const loc = String(row[1] || '').trim();
+        if (!loc) return;
+
+        listSloc.add(loc);
+        if (!storageMap[loc]) storageMap[loc] = [];
+        storageMap[loc].push({
+          id: String(row[0] || ''),
+          pn: String(row[2] || ''),
+          desc: String(row[3] || ''),
+          kapasitas: Number(row[4]) || 0,
+          stok: Number(row[5]) || 0,
+          konversi: Number(row[6]) || 1
+        });
+      });
+    }
+
+    const sheetTruck = ss.getSheetByName("MAPPING_TRUCK");
+    if (sheetTruck && sheetTruck.getLastRow() > 1) {
+      const rowCount = sheetTruck.getLastRow() - 1;
+      const dataTruck = sheetTruck.getRange(2, 1, rowCount, 7).getValues();
+      dataTruck.forEach(row => {
+        const loc = String(row[1] || '').trim();
+        if (!loc) return;
+
+        listTruck.add(loc);
+        if (!truckMap[loc]) truckMap[loc] = [];
+        truckMap[loc].push({
+          id: String(row[0] || ''),
+          pn: String(row[2] || ''),
+          desc: String(row[3] || ''),
+          kapasitas: Number(row[4]) || 0,
+          stok: Number(row[5]) || 0,
+          konversi: Number(row[6]) || 1
+        });
+      });
+    }
+
+    const teraStorage = [];
+    const sheetTeraStorage = ss.getSheetByName("TERA_STORAGE");
+    if (sheetTeraStorage && sheetTeraStorage.getLastRow() > 1) {
+      const lastRow = sheetTeraStorage.getLastRow();
+      const lastColumn = Math.max(2, sheetTeraStorage.getLastColumn());
+      const dataTeraS = sheetTeraStorage.getRange(1, 1, lastRow, lastColumn).getValues();
+      const header = dataTeraS[0].map(value => String(value || '').trim());
+      let colTinggi = header.indexOf("Tinggi_cm");
+      let colVol = header.indexOf("Volume_Liter");
+      if (colTinggi === -1) colTinggi = 0;
+      if (colVol === -1) colVol = 1;
+
+      for (let i = 1; i < dataTeraS.length; i++) {
+        const tinggi = Number(dataTeraS[i][colTinggi]);
+        const vol = Number(dataTeraS[i][colVol]);
+        if (Number.isFinite(tinggi) && Number.isFinite(vol)) {
+          teraStorage.push({ t: tinggi, v: vol });
+        }
+      }
+      teraStorage.sort((a, b) => a.t - b.t);
+    }
+
+    const teraTruck = {};
+    const sheetTeraTruck = ss.getSheetByName("TERA_TRUCK");
+    if (sheetTeraTruck && sheetTeraTruck.getLastRow() > 1) {
+      const rowCount = sheetTeraTruck.getLastRow() - 1;
+      const dataTeraT = sheetTeraTruck.getRange(2, 1, rowCount, 3).getValues();
+      dataTeraT.forEach(row => {
+        const cap = String(row[0] || '').trim();
+        const tinggi = Number(row[1]);
+        const vol = Number(row[2]);
+        if (cap && Number.isFinite(tinggi) && Number.isFinite(vol)) {
+          if (!teraTruck[cap]) teraTruck[cap] = [];
+          teraTruck[cap].push({ t: tinggi, v: vol });
+        }
+      });
+      Object.keys(teraTruck).forEach(cap => {
+        teraTruck[cap].sort((a, b) => a.t - b.t);
+      });
+    }
+
+    return {
+      status: "SUCCESS",
+      buildVersion: APP_BUILD_VERSION,
+      storageMap: storageMap,
+      truckMap: truckMap,
+      listSloc: Array.from(listSloc).sort(),
+      listTruck: Array.from(listTruck).sort(),
+      teraStorage: teraStorage,
+      teraTruck: teraTruck
+    };
+  } catch (error) {
+    const message = String(error && error.message || error || 'Kesalahan tidak diketahui saat memuat konfigurasi.');
+    console.error('getAppConfig gagal: ' + message);
+
+    // Tetap mengembalikan objek yang dapat diserialisasi agar frontend tidak menggantung.
+    return {
+      status: "ERROR",
+      buildVersion: APP_BUILD_VERSION,
+      message: message,
+      storageMap: {},
+      truckMap: {},
+      listSloc: [],
+      listTruck: [],
+      teraStorage: [],
+      teraTruck: {}
+    };
+  }
+}
+
+/**
+ * ==========================================
+ * FUNGSI CRUD MAPPING MATERIAL (PER-LOKASI)
+ * ==========================================
+ */
+function saveMappingItem(data) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheetName = data.kategori === 'Storage' ? "MAPPING_STORAGE" : "MAPPING_TRUCK";
+    const sheet = ss.getSheetByName(sheetName);
+    
+    if(!sheet) throw new Error("Sheet Database Mapping tidak ditemukan!");
+
+    if (data.action === 'ADD') {
+      const newId = (data.kategori === 'Storage' ? "MS_" : "MT_") + new Date().getTime();
+      // Pastikan urutan Header: ID, Lokasi, PN, Desc, Kapasitas, Stok, Konversi
+      sheet.appendRow([newId, data.lokasi, data.pn, data.desc, data.kapasitas || 0, data.stok || 0, data.konversi || 1]);
+    } 
+    else if (data.action === 'EDIT') {
+      const db = sheet.getDataRange().getValues();
+      for (let i = 1; i < db.length; i++) {
+        if (db[i][0] === data.id) {
+          // Hanya izinkan edit PN dan Desc, dll
+          sheet.getRange(i + 1, 3).setValue(data.pn);
+          sheet.getRange(i + 1, 4).setValue(data.desc);
+          sheet.getRange(i + 1, 5).setValue(data.kapasitas);
+          sheet.getRange(i + 1, 6).setValue(data.stok);
+          sheet.getRange(i + 1, 7).setValue(data.konversi);
+          break;
+        }
+      }
+    }
+    else if (data.action === 'DELETE') {
+      const db = sheet.getDataRange().getValues();
+      for (let i = 1; i < db.length; i++) {
+        if (db[i][0] === data.id) {
+          sheet.deleteRow(i + 1);
+          break;
+        }
+      }
+    }
+    
+    SpreadsheetApp.flush();
+    return { status: "SUCCESS" };
+  } catch(e) {
+    return { status: "ERROR", message: e.toString() };
+  }
+}
+
+/**
+ * Meminta otorisasi Google Drive dan Spreadsheet kepada akun pemilik deployment.
+ * WAJIB dijalankan manual satu kali dari editor Apps Script setelah memasang V3.
+ *
+ * Langkah:
+ * 1. Pilih fungsi authorizeEvidenceDrive pada dropdown fungsi.
+ * 2. Klik Run/Jalankan.
+ * 3. Pilih Review permissions/Tinjau izin.
+ * 4. Beri izin Google Drive dan Google Sheets.
+ * 5. Jalankan lagi sampai hasil eksekusi SUCCESS.
+ */
+function authorizeEvidenceDrive() {
+  ScriptApp.requireScopes(ScriptApp.AuthMode.FULL, [
+    OAUTH_SCOPE_SPREADSHEETS,
+    OAUTH_SCOPE_DRIVE
+  ]);
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) {
+    throw new Error('Spreadsheet aktif tidak ditemukan. Buka project Apps Script dari menu Extensions > Apps Script pada spreadsheet database.');
+  }
+
+  const folder = DriveApp.getFolderById(EVIDENCE_FOLDER_ID);
+
+  // Uji izin tulis yang sesungguhnya. File uji langsung dipindahkan ke Trash.
+  const testName = 'TES_IZIN_LUBE_OPS_' + new Date().getTime() + '.txt';
+  const testBlob = Utilities.newBlob(
+    'Tes otorisasi Lube Operations. File ini dapat dihapus.',
+    MimeType.PLAIN_TEXT,
+    testName
+  );
+  const testFile = folder.createFile(testBlob);
+  const testFileId = testFile.getId();
+  testFile.setTrashed(true);
+
+  const result = {
+    status: 'SUCCESS',
+    message: 'Otorisasi Google Drive aktif dan folder dapat ditulis.',
+    spreadsheetName: ss.getName(),
+    folderName: folder.getName(),
+    folderId: folder.getId(),
+    testFileId: testFileId
+  };
+
+  console.log(JSON.stringify(result));
+  return result;
+}
+
+// Alias agar tetap mudah ditemukan bila sebelumnya memakai nama fungsi lama.
+function authorizeApplication() {
+  return authorizeEvidenceDrive();
+}
+
+/**
+ * Memeriksa apakah scope Drive telah disetujui oleh akun yang mengeksekusi script.
+ * Fungsi private ini tidak mencoba membuka dialog otorisasi dari halaman web app.
+ */
+function assertDriveAuthorization_() {
+  try {
+    const authInfo = ScriptApp.getAuthorizationInfo(
+      ScriptApp.AuthMode.FULL,
+      [OAUTH_SCOPE_DRIVE]
+    );
+
+    if (authInfo.getAuthorizationStatus() !== ScriptApp.AuthorizationStatus.NOT_REQUIRED) {
+      throw new Error('OTORISASI_DRIVE_DIBUTUHKAN');
+    }
+  } catch (error) {
+    if (String(error && error.message || error).indexOf('OTORISASI_DRIVE_DIBUTUHKAN') !== -1) {
+      throw error;
+    }
+
+    // Pada beberapa jenis deployment pengecekan status dapat gagal sebelum akses Drive.
+    // Proses dilanjutkan dan error DriveApp akan dinormalisasi oleh fungsi berikutnya.
+    console.log('Pengecekan status otorisasi dilewati: ' + String(error && error.message || error));
+  }
+}
+
+function isDriveAuthorizationError_(error) {
+  const message = String(error && error.message || error || '').toLowerCase();
+  return message.indexOf('otorisasi_drive_dibutuhkan') !== -1 ||
+    message.indexOf('authorization is required') !== -1 ||
+    message.indexOf('you do not have permission to call driveapp') !== -1 ||
+    message.indexOf('tidak memiliki izin untuk memanggil driveapp') !== -1 ||
+    message.indexOf('required permissions') !== -1 ||
+    message.indexOf('izin yang diperlukan') !== -1 ||
+    message.indexOf('insufficient authentication scopes') !== -1;
+}
+
+function driveAuthorizationMessage_() {
+  return [
+    'OTORISASI_DRIVE_DIBUTUHKAN.',
+    'Akun pemilik deployment belum memberikan izin Google Drive kepada project ini.',
+    'Buka editor Apps Script, tempel appsscript.json V3, simpan, lalu jalankan fungsi authorizeEvidenceDrive() satu kali dan setujui seluruh izin.',
+    'Setelah berhasil, deploy ulang Web App sebagai New version dengan Execute as: Me.'
+  ].join(' ');
+}
+
+/**
+ * Menguji apakah akun eksekutor memiliki scope dan akses tulis ke folder eviden.
+ * Jalankan dari editor Apps Script; fungsi ini juga memicu permintaan otorisasi.
+ */
+function testEvidenceFolderAccess() {
+  try {
+    return authorizeEvidenceDrive();
+  } catch (error) {
+    return {
+      status: 'ERROR',
+      message: isDriveAuthorizationError_(error)
+        ? driveAuthorizationMessage_()
+        : 'Folder tidak dapat diakses atau ditulis. Pastikan akun pemilik deployment memiliki akses Editor ke folder. Detail: ' + String(error && error.message || error)
+    };
+  }
+}
+
+function sanitizeFileName_(value) {
+  return String(value || "")
+    .trim()
+    .replace(/[\\/:*?"<>|#%{}~&]/g, "-")
+    .replace(/\s+/g, "_")
+    .substring(0, 60) || "NA";
+}
+
+function extractPdfBase64_(pdfPayload) {
+  if (!pdfPayload) return "";
+  if (typeof pdfPayload !== "string") {
+    throw new Error("Format eviden PDF tidak valid.");
+  }
+
+  const payload = pdfPayload.trim();
+  if (!payload) throw new Error("Isi eviden PDF kosong.");
+
+  let base64Data = "";
+
+  // Mendukung seluruh bentuk keluaran jsPDF berikut:
+  // 1) data:application/pdf;base64,...
+  // 2) data:application/pdf;filename=generated.pdf;base64,...
+  // 3) base64 mentah tanpa awalan Data URI.
+  if (/^data:/i.test(payload)) {
+    const commaIndex = payload.indexOf(",");
+    if (commaIndex < 0) {
+      throw new Error("Data URI PDF tidak memiliki pemisah base64 yang valid.");
+    }
+
+    const metadata = payload.substring(0, commaIndex).toLowerCase();
+    const isPdf = metadata.indexOf("data:application/pdf") === 0;
+    const isBase64 = metadata.indexOf(";base64") !== -1;
+
+    if (!isPdf || !isBase64) {
+      throw new Error("Lampiran yang diterima bukan PDF base64 yang valid.");
+    }
+
+    base64Data = payload.substring(commaIndex + 1);
+  } else {
+    base64Data = payload;
+  }
+
+  // Hapus spasi/baris baru yang kadang muncul saat string panjang dikirim.
+  base64Data = base64Data.replace(/\s+/g, "");
+  if (!base64Data) throw new Error("Isi file PDF kosong.");
+
+  // Validasi karakter sebelum proses decode supaya pesan error lebih jelas.
+  if (!/^[A-Za-z0-9+/_-]+={0,2}$/.test(base64Data)) {
+    throw new Error("Isi base64 PDF rusak atau mengandung karakter yang tidak valid.");
+  }
+
+  return base64Data;
+}
+
+function decodePdfBase64_(base64Data) {
+  let decoded;
+
+  try {
+    decoded = Utilities.base64Decode(base64Data);
+  } catch (standardError) {
+    try {
+      // Fallback untuk payload URL-safe (- dan _).
+      decoded = Utilities.base64DecodeWebSafe(base64Data);
+    } catch (webSafeError) {
+      throw new Error("File PDF gagal didekode: " + standardError.message);
+    }
+  }
+
+  if (!decoded || decoded.length < 5) {
+    throw new Error("File PDF kosong atau tidak lengkap.");
+  }
+
+  // Signature PDF harus diawali dengan %PDF-
+  const pdfSignature = [37, 80, 68, 70, 45];
+  for (let i = 0; i < pdfSignature.length; i++) {
+    const byteValue = decoded[i] < 0 ? decoded[i] + 256 : decoded[i];
+    if (byteValue !== pdfSignature[i]) {
+      throw new Error("Lampiran berhasil didekode, tetapi isinya bukan file PDF yang valid.");
+    }
+  }
+
+  return decoded;
+}
+
+function saveEvidencePdf_(pdfDataUri, idTransaksi, formData, lokasi) {
+  if (!pdfDataUri) return '';
+
+  // Berikan pesan yang jelas sebelum upload apabila scope Drive belum disetujui.
+  try {
+    assertDriveAuthorization_();
+  } catch (authorizationError) {
+    if (isDriveAuthorizationError_(authorizationError)) {
+      throw new Error(driveAuthorizationMessage_());
+    }
+    throw authorizationError;
+  }
+
+  const base64Data = extractPdfBase64_(pdfDataUri);
+  const decoded = decodePdfBase64_(base64Data);
+
+  const tanggal = sanitizeFileName_(formData.tanggal);
+  const lokasiAman = sanitizeFileName_(lokasi);
+  const operatorAman = sanitizeFileName_(formData.operator);
+  const isEditEvidence = String(formData.evidenceMode || '').toUpperCase() === 'EDIT';
+  const editSuffix = isEditEvidence
+    ? `_UPDATE_${Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyyMMdd_HHmmss')}`
+    : '';
+  const fileName = `Eviden_${tanggal}_${lokasiAman}_${operatorAman}_${idTransaksi}${editSuffix}.pdf`;
+  const blob = Utilities.newBlob(decoded, MimeType.PDF, fileName);
+
+  let folder;
+  try {
+    folder = DriveApp.getFolderById(EVIDENCE_FOLDER_ID);
+  } catch (error) {
+    if (isDriveAuthorizationError_(error)) {
+      throw new Error(driveAuthorizationMessage_());
+    }
+    throw new Error('Folder tujuan tidak ditemukan atau tidak dapat diakses. Pastikan akun pemilik deployment memiliki akses Editor ke folder ID ' + EVIDENCE_FOLDER_ID + '. Detail: ' + String(error && error.message || error));
+  }
+
+  let file;
+  try {
+    file = folder.createFile(blob);
+    const evidenceLabel = isEditEvidence ? 'Eviden tambahan hasil edit' : 'Eviden operasional';
+    file.setDescription(`${evidenceLabel} ${formData.kategori || 'Lube'} | ${lokasi || '-'} | ${formData.tanggal || '-'} ${formData.jam || '-'}`);
+  } catch (error) {
+    if (isDriveAuthorizationError_(error)) {
+      throw new Error(driveAuthorizationMessage_());
+    }
+    throw new Error('PDF gagal disimpan ke folder tujuan. Pastikan akun deployment merupakan Editor/Content manager pada folder. Detail: ' + String(error && error.message || error));
+  }
+
+  // Hak akses file mengikuti folder. Perubahan berbagi tidak boleh menggagalkan transaksi.
+  try {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch (sharingError) {
+    console.log('Sharing file mengikuti kebijakan folder/Workspace: ' + String(sharingError && sharingError.message || sharingError));
+  }
+
+  return file.getUrl();
+}
+
+/**
+ * Memecah isi kolom Link_Eviden menjadi daftar URL.
+ * Mendukung data lama satu URL dan data baru beberapa URL yang dipisahkan baris.
+ */
+function parseEvidenceLinks_(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+
+  const uniqueLinks = [];
+  raw.split(/\r?\n+/).forEach(item => {
+    const link = String(item || '').trim();
+    if (link && /^https?:\/\//i.test(link) && uniqueLinks.indexOf(link) === -1) {
+      uniqueLinks.push(link);
+    }
+  });
+  return uniqueLinks;
+}
+
+function joinEvidenceLinks_(links) {
+  const uniqueLinks = [];
+  (Array.isArray(links) ? links : []).forEach(item => {
+    const link = String(item || '').trim();
+    if (link && /^https?:\/\//i.test(link) && uniqueLinks.indexOf(link) === -1) {
+      uniqueLinks.push(link);
+    }
+  });
+  return uniqueLinks.join('\n');
+}
+
+/**
+ * ==========================================
+ * FUNGSI TRANSAKSI OPERASIONAL
+ * ==========================================
+ */
+function simpanData(formData) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const timestamp = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'dd/MM/yyyy HH:mm:ss');
+    const idTransaksi = "TRX-" + new Date().getTime();
+    
+    const sheetHeader = ss.getSheetByName("DATA_HEADER");
+    const sheetDetail = ss.getSheetByName("DATA_DETAIL");
+    
+    if(!sheetHeader || !sheetDetail) throw new Error("Sheet DATA_HEADER atau DATA_DETAIL tidak ditemukan!");
+    
+    let lokasi = formData.kategori === 'Lube Storage' ? formData.sloc : formData.idTruck;
+    
+    // Pastikan database lama memiliki header Link_Eviden.
+    if (sheetHeader.getLastColumn() < 9 || sheetHeader.getRange(1, 9).getValue() !== "Link_Eviden") {
+      sheetHeader.getRange(1, 9).setValue("Link_Eviden").setFontWeight("bold").setBackground("#f3f4f6");
+    }
+
+    // Simpan satu file PDF gabungan langsung ke folder Drive yang ditentukan.
+    // Jika upload gagal, transaksi dibatalkan agar tidak muncul status sukses palsu.
+    const linkEviden = formData.pdfEvidence
+      ? saveEvidencePdf_(formData.pdfEvidence, idTransaksi, formData, lokasi)
+      : "";
+    
+    // Insert Header (Kolom 9: Link_Eviden)
+    sheetHeader.appendRow([idTransaksi, formData.kategori, timestamp, formData.tanggal, formData.jam, formData.operator, formData.shift, lokasi, linkEviden]);
+    
+    // Build Details array
+    let rowDataBatch = []; 
+    let masterSheet = ss.getSheetByName(formData.kategori === 'Lube Storage' ? "MAPPING_STORAGE" : "MAPPING_TRUCK");
+    let masterData = masterSheet ? masterSheet.getDataRange().getValues() : [];
+    
+    const updateStok = (pn, qty) => {
+      // Dinonaktifkan sesuai permintaan: Tujuan hanya merekap totalizer flowmeter
+    };
+
+    if (formData.kategori === 'Lube Storage' && formData.storageDetails) {
+      formData.storageDetails.forEach(item => {
+        let parts = item.material.split(" - ");
+        let pn = parts[0] || "";
+        let desc = parts.slice(1).join(" - ") || item.material;
+        
+        let fms = Array.isArray(item.flowmeter) ? item.flowmeter : [item.flowmeter];
+        let fm1 = fms[0] || ""; let fm2 = fms[1] || ""; let fm3 = fms[2] || "";
+        let fm4 = fms[3] || ""; let fm5 = fms[4] || ""; let fm6 = fms[5] || "";
+
+        rowDataBatch.push([idTransaksi, pn, desc, item.sounding, item.qtyTera || "", fm1, fm2, fm3, fm4, fm5, fm6]);
+      });
+    } else if (formData.kategori === 'Lube Truck' && formData.truckDetails) {
+      formData.truckDetails.forEach(item => {
+        let fms = Array.isArray(item.flowmeter) ? item.flowmeter : [item.flowmeter];
+        let fm1 = fms[0] || ""; let fm2 = fms[1] || ""; let fm3 = fms[2] || "";
+        let fm4 = fms[3] || ""; let fm5 = fms[4] || ""; let fm6 = fms[5] || "";
+
+        rowDataBatch.push([idTransaksi, item.partNumber, item.desc, item.sounding, item.qtyTera || "", fm1, fm2, fm3, fm4, fm5, fm6]);
+      });
+    }
+
+    if(rowDataBatch.length > 0) {
+      const lastRow = sheetDetail.getLastRow();
+      sheetDetail.getRange(lastRow + 1, 1, rowDataBatch.length, rowDataBatch[0].length).setValues(rowDataBatch);
+      CacheService.getScriptCache().remove("history_data_v2");
+      SpreadsheetApp.flush(); 
+      const evidenceMessage = linkEviden ? " Eviden foto telah digabung menjadi PDF dan tersimpan di Google Drive." : "";
+      return { status: "SUCCESS", message: "Data operasional berhasil disimpan." + evidenceMessage, linkEviden: linkEviden };
+    } else {
+      throw new Error("Data detail kosong.");
+    }
+  } catch (error) {
+    const normalizedMessage = isDriveAuthorizationError_(error)
+      ? driveAuthorizationMessage_()
+      : String(error && error.message || error);
+    return { status: "ERROR", message: normalizedMessage };
+  }
+}
+
+function getHistoryData() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetHeader = ss.getSheetByName("DATA_HEADER");
+  if(!sheetHeader) return [];
+  
+  const lastRow = sheetHeader.getLastRow();
+  if(lastRow <= 1) return [];
+  
+  const startRow = Math.max(2, lastRow - 4); 
+  const numRows = lastRow - startRow + 1;
+  const data = sheetHeader.getRange(startRow, 1, numRows, sheetHeader.getLastColumn()).getValues();
+  
+  let result = data.map(row => {
+    let tsVal = row[2];
+    let tsString = tsVal instanceof Date ? Utilities.formatDate(tsVal, 'Asia/Jakarta', 'dd/MM/yyyy HH:mm:ss') : (tsVal ? tsVal.toString() : "");
+    
+    const evidenceLinks = parseEvidenceLinks_(row[8]);
+    return {
+      idTransaksi: row[0] ? row[0].toString() : "",
+      kategori: row[1] ? row[1].toString() : "",
+      timestampRaw: tsVal instanceof Date ? tsVal.getTime() : parseDateString(tsString),
+      timestamp: tsString,
+      lokasi: row[7] ? row[7].toString() : "",
+      linkEviden: evidenceLinks.length ? evidenceLinks[evidenceLinks.length - 1] : "",
+      evidenceLinks: evidenceLinks
+    };
+  });
+  
+  result.sort((a, b) => b.timestampRaw - a.timestampRaw);
+  return result;
+}
+
+function parseDateString(dateString) {
+  if(!dateString) return new Date(0);
+  try {
+    let parts = dateString.split(" ");
+    let dateParts = parts[0].split("/");
+    let timeParts = parts[1].split(":");
+    return new Date(dateParts[2], dateParts[1] - 1, dateParts[0], timeParts[0], timeParts[1], timeParts[2]).getTime();
+  } catch(e) {
+    return new Date(0).getTime();
+  }
+}
+
+/**
+ * ==========================================
+ * FUNGSI RIWAYAT (HISTORY MANAGEMENT)
+ * ==========================================
+ */
+function getFullHistory() {
+  const cache = CacheService.getScriptCache();
+  const cachedData = cache.get("history_data_v2");
+  if(cachedData) {
+    try {
+      return JSON.parse(cachedData);
+    } catch(e) {}
+  }
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetHeader = ss.getSheetByName("DATA_HEADER");
+  if(!sheetHeader) return [];
+  
+  const lastRow = sheetHeader.getLastRow();
+  if(lastRow <= 1) return [];
+  
+  // OPTIMASI: Ambil 150 transaksi terakhir saja (sebelumnya 500) agar loading secepat kilat
+  const startRow = Math.max(2, lastRow - 150); 
+  const numRows = lastRow - startRow + 1;
+  const data = sheetHeader.getRange(startRow, 1, numRows, sheetHeader.getLastColumn()).getValues();
+  
+  // Ambil data dari DATA_DETAIL untuk pre-fetch
+  const sheetDetail = ss.getSheetByName("DATA_DETAIL");
+  let detailsMap = {};
+  if(sheetDetail && sheetDetail.getLastRow() > 1) {
+    const detailLastRow = sheetDetail.getLastRow();
+    // OPTIMASI: Cukup ambil 1000 baris detail terakhir (sebelumnya 3000)
+    const detailStartRow = Math.max(2, detailLastRow - 1000);
+    const detailNumRows = detailLastRow - detailStartRow + 1;
+    const detailData = sheetDetail.getRange(detailStartRow, 1, detailNumRows, sheetDetail.getLastColumn()).getValues();
+    detailData.forEach(r => {
+      let id = r[0];
+      if(id) {
+        if(!detailsMap[id]) detailsMap[id] = [];
+        let fms = [];
+        for (let i = 5; i <= 10; i++) {
+          if (r[i] !== "" && r[i] != null) fms.push(r[i].toString());
+        }
+        detailsMap[id].push({
+          material: (r[1] + ' - ' + r[2]).toString(),
+          sounding: r[3] !== "" ? r[3].toString() : "",
+          qtyTera: r[4] !== "" ? r[4].toString() : "",
+          flowmeters: fms
+        });
+      }
+    });
+  }
+  
+  let allData = data.map(row => {
+    let id = row[0] ? row[0].toString() : "";
+    let tsVal = row[2];
+    let tsString = tsVal instanceof Date ? Utilities.formatDate(tsVal, 'Asia/Jakarta', 'dd/MM/yyyy HH:mm:ss') : (tsVal ? tsVal.toString() : "");
+    
+    const evidenceLinks = parseEvidenceLinks_(row[8]);
+    return {
+      idTransaksi: id,
+      kategori: row[1] ? row[1].toString() : "",
+      timestampRaw: tsVal instanceof Date ? tsVal.getTime() : parseDateString(tsString),
+      timestamp: tsString,
+      operator: row[5] ? row[5].toString() : "",
+      shift: row[6] ? row[6].toString() : "",
+      lokasi: row[7] ? row[7].toString() : "",
+      linkEviden: evidenceLinks.length ? evidenceLinks[evidenceLinks.length - 1] : "",
+      evidenceLinks: evidenceLinks,
+      rowCount: detailsMap[id] ? detailsMap[id].length : 0,
+      details: detailsMap[id] || []
+    };
+  });
+  
+  allData.sort((a, b) => b.timestampRaw - a.timestampRaw);
+  let finalResult = allData.slice(0, 100);
+  
+  try {
+    cache.put("history_data_v2", JSON.stringify(finalResult), 21600); // Cache selama 6 Jam
+  } catch(e) {}
+  
+  return finalResult;
+}
+
+function getHistoryDetail(idTransaksi) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("DATA_DETAIL");
+  if(!sheet) return [];
+  
+  const data = sheet.getDataRange().getValues();
+  let details = [];
+  
+  for(let i = 1; i < data.length; i++) {
+    if(data[i][0] === idTransaksi) {
+      let fms = [];
+      for (let c = 5; c <= 10; c++) {
+        if (data[i][c] !== "" && data[i][c] != null) fms.push(data[i][c].toString());
+      }
+      details.push({
+        material: data[i][1] + ' - ' + data[i][2],
+        sounding: data[i][3],
+        qtyTera: data[i][4] !== "" ? data[i][4].toString() : "",
+        flowmeters: fms
+      });
+    }
+  }
+  return details;
+}
+
+function updateHistory(idTransaksi, updatedData, evidencePayload) {
+  const lock = LockService.getScriptLock();
+  let lockAcquired = false;
+
+  try {
+    const transactionId = String(idTransaksi || '').trim();
+    if (!transactionId) throw new Error("ID transaksi tidak valid.");
+    if (!Array.isArray(updatedData)) throw new Error("Data perubahan transaksi tidak valid.");
+
+    lock.waitLock(30000);
+    lockAcquired = true;
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheetHeader = ss.getSheetByName("DATA_HEADER");
+    const sheetDetail = ss.getSheetByName("DATA_DETAIL");
+    if(!sheetHeader || !sheetDetail) {
+      throw new Error("Sheet DATA_HEADER atau DATA_DETAIL tidak ditemukan!");
+    }
+
+    // Temukan header transaksi untuk metadata dan posisi Link_Eviden.
+    const headerData = sheetHeader.getDataRange().getValues();
+    let headerRowIndex = -1;
+    let headerRow = null;
+
+    for (let i = 1; i < headerData.length; i++) {
+      if (String(headerData[i][0] || '').trim() === transactionId) {
+        headerRowIndex = i + 1;
+        headerRow = headerData[i];
+        break;
+      }
+    }
+
+    if (headerRowIndex === -1 || !headerRow) {
+      throw new Error("Transaksi tidak ditemukan pada DATA_HEADER.");
+    }
+
+    // Buat peta material agar validasi selesai sebelum ada perubahan pada sheet.
+    const updateMap = {};
+    updatedData.forEach(item => {
+      const material = String(item && item.material || '').trim();
+      if (!material) return;
+
+      const sounding = item.sounding === null || item.sounding === undefined
+        ? ''
+        : String(item.sounding).trim();
+      const flowmeters = Array.isArray(item.flowmeter)
+        ? item.flowmeter.map(value => value === null || value === undefined ? '' : String(value).trim())
+        : [item.flowmeter === null || item.flowmeter === undefined ? '' : String(item.flowmeter).trim()];
+
+      updateMap[material] = {
+        sounding: sounding,
+        flowmeters: flowmeters.slice(0, 6)
+      };
+    });
+
+    const detailData = sheetDetail.getDataRange().getValues();
+    const detailUpdates = [];
+
+    for(let i = 1; i < detailData.length; i++) {
+      if(String(detailData[i][0] || '').trim() === transactionId) {
+        const matName = String(detailData[i][1] || '') + ' - ' + String(detailData[i][2] || '');
+        const match = updateMap[matName];
+
+        if(match) {
+          if (match.sounding === '') {
+            throw new Error('Nilai Sounding untuk ' + matName + ' tidak boleh kosong.');
+          }
+
+          detailUpdates.push({
+            row: i + 1,
+            sounding: match.sounding,
+            flowmeters: match.flowmeters
+          });
+        }
+      }
+    }
+
+    if (detailUpdates.length === 0 && updatedData.length > 0) {
+      throw new Error("Detail transaksi yang akan diperbarui tidak ditemukan.");
+    }
+
+    // Bila ada foto baru, simpan sebagai PDF tambahan. Link lama tetap dipertahankan.
+    let newEvidenceLink = '';
+    if (evidencePayload && evidencePayload.pdfEvidence) {
+      const meta = {
+        kategori: headerRow[1] ? String(headerRow[1]) : 'Lube',
+        tanggal: headerRow[3] instanceof Date
+          ? Utilities.formatDate(headerRow[3], 'Asia/Jakarta', 'yyyy-MM-dd')
+          : (headerRow[3] ? String(headerRow[3]) : ''),
+        jam: headerRow[4] instanceof Date
+          ? Utilities.formatDate(headerRow[4], 'Asia/Jakarta', 'HH:mm:ss')
+          : (headerRow[4] ? String(headerRow[4]) : ''),
+        operator: headerRow[5] ? String(headerRow[5]) : '',
+        shift: headerRow[6] ? String(headerRow[6]) : '',
+        evidenceMode: 'EDIT'
+      };
+      const lokasi = headerRow[7] ? String(headerRow[7]) : '';
+      newEvidenceLink = saveEvidencePdf_(evidencePayload.pdfEvidence, transactionId, meta, lokasi);
+    }
+
+    // Terapkan perubahan detail setelah seluruh validasi dan upload eviden berhasil.
+    detailUpdates.forEach(update => {
+      sheetDetail.getRange(update.row, 4).setValue(update.sounding);
+      for(let f = 0; f < 6; f++) {
+        const fmVal = update.flowmeters[f] !== undefined ? update.flowmeters[f] : "";
+        sheetDetail.getRange(update.row, 6 + f).setValue(fmVal);
+      }
+    });
+
+    let evidenceLinks = parseEvidenceLinks_(headerRow[8]);
+    if (newEvidenceLink && evidenceLinks.indexOf(newEvidenceLink) === -1) {
+      evidenceLinks.push(newEvidenceLink);
+      sheetHeader.getRange(headerRowIndex, 9).setValue(joinEvidenceLinks_(evidenceLinks));
+    }
+
+    CacheService.getScriptCache().remove("history_data_v2");
+    SpreadsheetApp.flush();
+
+    return {
+      status: "SUCCESS",
+      message: newEvidenceLink
+        ? "Data transaksi dan eviden foto tambahan berhasil disimpan."
+        : "Data transaksi berhasil diperbarui.",
+      evidenceAdded: Boolean(newEvidenceLink),
+      linkEviden: newEvidenceLink,
+      evidenceLinks: evidenceLinks
+    };
+  } catch(e) {
+    const normalizedMessage = isDriveAuthorizationError_(e)
+      ? driveAuthorizationMessage_()
+      : String(e && e.message || e);
+    return { status: "ERROR", message: normalizedMessage };
+  } finally {
+    if (lockAcquired) {
+      lock.releaseLock();
+    }
+  }
+}
+
+
+/**
+ * ==========================================
+ * DASHBOARD KEPATUHAN & DETAIL RIWAYAT V6
+ * ==========================================
+ */
+function normalizeHistoryEpoch_(timestampValue, tanggalValue, jamValue) {
+  if (timestampValue instanceof Date && !isNaN(timestampValue.getTime())) {
+    return timestampValue.getTime();
+  }
+
+  const timestampText = String(timestampValue || '').trim();
+  if (timestampText) {
+    const parsedTimestamp = parseDateString(timestampText);
+    if (parsedTimestamp && parsedTimestamp > 0) return parsedTimestamp;
+  }
+
+  if (tanggalValue instanceof Date && !isNaN(tanggalValue.getTime())) {
+    const base = new Date(tanggalValue.getTime());
+    if (jamValue instanceof Date && !isNaN(jamValue.getTime())) {
+      base.setHours(jamValue.getHours(), jamValue.getMinutes(), jamValue.getSeconds(), 0);
+    } else {
+      const timeParts = String(jamValue || '').trim().split(':');
+      if (timeParts.length >= 2) {
+        base.setHours(Number(timeParts[0]) || 0, Number(timeParts[1]) || 0, Number(timeParts[2]) || 0, 0);
+      }
+    }
+    return base.getTime();
+  }
+
+  const dateText = String(tanggalValue || '').trim();
+  if (!dateText) return 0;
+  let year = 0;
+  let month = 0;
+  let day = 0;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateText)) {
+    const parts = dateText.split('-');
+    year = Number(parts[0]);
+    month = Number(parts[1]) - 1;
+    day = Number(parts[2]);
+  } else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateText)) {
+    const parts = dateText.split('/');
+    day = Number(parts[0]);
+    month = Number(parts[1]) - 1;
+    year = Number(parts[2]);
+  } else {
+    const parsed = new Date(dateText);
+    if (!isNaN(parsed.getTime())) return parsed.getTime();
+    return 0;
+  }
+
+  const timeParts = String(jamValue || '').trim().split(':');
+  const hour = Number(timeParts[0]) || 0;
+  const minute = Number(timeParts[1]) || 0;
+  const second = Number(timeParts[2]) || 0;
+  return new Date(year, month, day, hour, minute, second, 0).getTime();
+}
+
+function formatHistoryEpoch_(epoch, includeTime) {
+  if (!epoch) return '';
+  return Utilities.formatDate(
+    new Date(epoch),
+    'Asia/Jakarta',
+    includeTime === false ? 'dd/MM/yyyy' : 'dd/MM/yyyy HH:mm:ss'
+  );
+}
+
+function getHistoryTransactionDetail(idTransaksi) {
+  try {
+    const transactionId = String(idTransaksi || '').trim();
+    if (!transactionId) throw new Error('ID transaksi tidak valid.');
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheetHeader = ss.getSheetByName('DATA_HEADER');
+    const sheetDetail = ss.getSheetByName('DATA_DETAIL');
+    if (!sheetHeader || !sheetDetail) {
+      throw new Error('Sheet DATA_HEADER atau DATA_DETAIL tidak ditemukan.');
+    }
+
+    const headerData = sheetHeader.getDataRange().getValues();
+    let headerRow = null;
+    for (let i = 1; i < headerData.length; i++) {
+      if (String(headerData[i][0] || '').trim() === transactionId) {
+        headerRow = headerData[i];
+        break;
+      }
+    }
+    if (!headerRow) throw new Error('Transaksi tidak ditemukan.');
+
+    const detailData = sheetDetail.getDataRange().getValues();
+    const details = [];
+    let soundingFilled = 0;
+    let fmFilledItems = 0;
+    let totalFmValues = 0;
+
+    for (let i = 1; i < detailData.length; i++) {
+      if (String(detailData[i][0] || '').trim() !== transactionId) continue;
+      const flowmeters = [];
+      for (let c = 5; c <= 10; c++) {
+        const fmValue = detailData[i][c];
+        if (fmValue !== '' && fmValue !== null && fmValue !== undefined) {
+          flowmeters.push(String(fmValue));
+        }
+      }
+      const sounding = detailData[i][3] !== '' && detailData[i][3] !== null && detailData[i][3] !== undefined
+        ? String(detailData[i][3])
+        : '';
+      if (sounding) soundingFilled++;
+      if (flowmeters.length > 0) fmFilledItems++;
+      totalFmValues += flowmeters.length;
+
+      details.push({
+        partNumber: String(detailData[i][1] || ''),
+        description: String(detailData[i][2] || ''),
+        material: String(detailData[i][1] || '') + ' - ' + String(detailData[i][2] || ''),
+        sounding: sounding,
+        qtyTera: detailData[i][4] !== '' && detailData[i][4] !== null && detailData[i][4] !== undefined
+          ? String(detailData[i][4])
+          : '',
+        flowmeters: flowmeters
+      });
+    }
+
+    const epoch = normalizeHistoryEpoch_(headerRow[2], headerRow[3], headerRow[4]);
+    const evidenceLinks = parseEvidenceLinks_(headerRow[8]);
+    return {
+      status: 'SUCCESS',
+      transaction: {
+        idTransaksi: transactionId,
+        kategori: String(headerRow[1] || ''),
+        timestamp: epoch ? formatHistoryEpoch_(epoch, true) : String(headerRow[2] || ''),
+        tanggal: headerRow[3] instanceof Date
+          ? Utilities.formatDate(headerRow[3], 'Asia/Jakarta', 'dd/MM/yyyy')
+          : String(headerRow[3] || ''),
+        jam: headerRow[4] instanceof Date
+          ? Utilities.formatDate(headerRow[4], 'Asia/Jakarta', 'HH:mm:ss')
+          : String(headerRow[4] || ''),
+        operator: String(headerRow[5] || ''),
+        shift: String(headerRow[6] || ''),
+        lokasi: String(headerRow[7] || ''),
+        evidenceLinks: evidenceLinks,
+        details: details,
+        summary: {
+          totalItems: details.length,
+          soundingFilled: soundingFilled,
+          soundingMissing: Math.max(0, details.length - soundingFilled),
+          fmFilledItems: fmFilledItems,
+          fmMissingItems: Math.max(0, details.length - fmFilledItems),
+          totalFmValues: totalFmValues,
+          evidenceCount: evidenceLinks.length
+        }
+      }
+    };
+  } catch (error) {
+    return { status: 'ERROR', message: String(error && error.message || error) };
+  }
+}
+
+function parseComplianceIsoDate_(value, endOfDay) {
+  const text = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+  const timezone = Session.getScriptTimeZone() || 'Asia/Makassar';
+  try {
+    return Utilities.parseDate(
+      text + (endOfDay ? ' 23:59:59' : ' 00:00:00'),
+      timezone,
+      'yyyy-MM-dd HH:mm:ss'
+    );
+  } catch (error) {
+    return null;
+  }
+}
+
+function formatComplianceIsoDate_(dateValue) {
+  if (!(dateValue instanceof Date) || isNaN(dateValue.getTime())) return '';
+  return Utilities.formatDate(dateValue, Session.getScriptTimeZone() || 'Asia/Makassar', 'yyyy-MM-dd');
+}
+
+function getComplianceDashboard(periodDays, startDate, endDate) {
+  try {
+    // Kompatibilitas sementara apabila browser lama masih memanggil format 4 argumen:
+    // getComplianceDashboard(periodDays, staleDays, startDate, endDate).
+    if (arguments.length >= 4) {
+      startDate = arguments[2];
+      endDate = arguments[3];
+    }
+    const requestedDays = Math.max(1, Math.min(180, Number(periodDays) || 7));
+    const now = new Date();
+    const nowEpoch = now.getTime();
+    const dayMs = 24 * 60 * 60 * 1000;
+
+    let periodStartDate = parseComplianceIsoDate_(startDate, false);
+    let periodEndDate = parseComplianceIsoDate_(endDate, true);
+
+    if (!periodStartDate && !periodEndDate) {
+      periodEndDate = now;
+      periodStartDate = new Date(nowEpoch - ((requestedDays - 1) * dayMs));
+      periodStartDate.setHours(0, 0, 0, 0);
+    } else if (!periodStartDate) {
+      periodStartDate = new Date(periodEndDate.getTime() - ((requestedDays - 1) * dayMs));
+      periodStartDate.setHours(0, 0, 0, 0);
+    } else if (!periodEndDate) {
+      periodEndDate = new Date(periodStartDate.getTime() + ((requestedDays - 1) * dayMs));
+      periodEndDate.setHours(23, 59, 59, 999);
+    }
+
+    const periodStart = periodStartDate.getTime();
+    const periodEnd = periodEndDate.getTime();
+    if (periodStart > periodEnd) {
+      throw new Error('Tanggal mulai tidak boleh melewati tanggal selesai.');
+    }
+
+    const days = Math.max(1, Math.min(366, Math.floor((periodEnd - periodStart) / dayMs) + 1));
+    const referenceEpoch = Math.min(nowEpoch, periodEnd);
+    const timezone = Session.getScriptTimeZone() || 'Asia/Makassar';
+    const periodLabel = Utilities.formatDate(periodStartDate, timezone, 'dd/MM/yyyy') +
+      ' - ' + Utilities.formatDate(periodEndDate, timezone, 'dd/MM/yyyy');
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheetHeader = ss.getSheetByName('DATA_HEADER');
+    const sheetDetail = ss.getSheetByName('DATA_DETAIL');
+    if (!sheetHeader || !sheetDetail) {
+      throw new Error('Sheet DATA_HEADER atau DATA_DETAIL tidak ditemukan.');
+    }
+
+    const locations = {};
+    const ensureLocation = (category, location) => {
+      const cleanLocation = String(location || '').trim();
+      if (!cleanLocation) return null;
+      const cleanCategory = category === 'Lube Storage' ? 'Lube Storage' : 'Lube Truck';
+      const key = cleanCategory + '|' + cleanLocation;
+      if (!locations[key]) {
+        locations[key] = {
+          category: cleanCategory,
+          location: cleanLocation,
+          totalPeriod: 0,
+          soundingPeriod: 0,
+          fmPeriod: 0,
+          itemPeriod: 0,
+          fmValuePeriod: 0,
+          lastSubmissionEpoch: 0,
+          lastSoundingEpoch: 0,
+          lastFmEpoch: 0,
+          lastOperator: '',
+          lastShift: ''
+        };
+      }
+      return locations[key];
+    };
+
+    const storageSheet = ss.getSheetByName('MAPPING_STORAGE');
+    if (storageSheet && storageSheet.getLastRow() > 1) {
+      const values = storageSheet.getRange(2, 2, storageSheet.getLastRow() - 1, 1).getValues();
+      values.forEach(row => ensureLocation('Lube Storage', row[0]));
+    }
+    const truckSheet = ss.getSheetByName('MAPPING_TRUCK');
+    if (truckSheet && truckSheet.getLastRow() > 1) {
+      const values = truckSheet.getRange(2, 2, truckSheet.getLastRow() - 1, 1).getValues();
+      values.forEach(row => ensureLocation('Lube Truck', row[0]));
+    }
+
+    const detailFlags = {};
+    if (sheetDetail.getLastRow() > 1) {
+      const detailData = sheetDetail.getRange(2, 1, sheetDetail.getLastRow() - 1, Math.max(11, sheetDetail.getLastColumn())).getValues();
+      detailData.forEach(row => {
+        const id = String(row[0] || '').trim();
+        if (!id) return;
+        if (!detailFlags[id]) {
+          detailFlags[id] = { hasSounding: false, hasFm: false, itemCount: 0, fmValueCount: 0 };
+        }
+        const flag = detailFlags[id];
+        flag.itemCount++;
+        if (row[3] !== '' && row[3] !== null && row[3] !== undefined) flag.hasSounding = true;
+        for (let c = 5; c <= 10; c++) {
+          if (row[c] !== '' && row[c] !== null && row[c] !== undefined) {
+            flag.hasFm = true;
+            flag.fmValueCount++;
+          }
+        }
+      });
+    }
+
+    let totalTransactionsAll = 0;
+    if (sheetHeader.getLastRow() > 1) {
+      const headerData = sheetHeader.getRange(2, 1, sheetHeader.getLastRow() - 1, Math.max(9, sheetHeader.getLastColumn())).getValues();
+      headerData.forEach(row => {
+        const id = String(row[0] || '').trim();
+        const categoryText = String(row[1] || '').trim();
+        const category = categoryText.toLowerCase().indexOf('storage') !== -1 ? 'Lube Storage' : 'Lube Truck';
+        const location = String(row[7] || '').trim();
+        if (!id || !location) return;
+        const stat = ensureLocation(category, location);
+        if (!stat) return;
+        totalTransactionsAll++;
+
+        const epoch = normalizeHistoryEpoch_(row[2], row[3], row[4]);
+        const flags = detailFlags[id] || { hasSounding: false, hasFm: false, itemCount: 0, fmValueCount: 0 };
+
+        // Riwayat terakhir dibatasi sampai tanggal akhir filter agar dashboard historis akurat.
+        if (epoch && epoch <= periodEnd) {
+          if (epoch > stat.lastSubmissionEpoch) {
+            stat.lastSubmissionEpoch = epoch;
+            stat.lastOperator = String(row[5] || '');
+            stat.lastShift = String(row[6] || '');
+          }
+          if (flags.hasSounding && epoch > stat.lastSoundingEpoch) stat.lastSoundingEpoch = epoch;
+          if (flags.hasFm && epoch > stat.lastFmEpoch) stat.lastFmEpoch = epoch;
+        }
+
+        if (epoch >= periodStart && epoch <= periodEnd) {
+          stat.totalPeriod++;
+          stat.itemPeriod += flags.itemCount;
+          stat.fmValuePeriod += flags.fmValueCount;
+          if (flags.hasSounding) stat.soundingPeriod++;
+          if (flags.hasFm) stat.fmPeriod++;
+        }
+      });
+    }
+
+    const calcDaysSince = epoch => epoch ? Math.max(0, Math.floor((referenceEpoch - epoch) / dayMs)) : null;
+    const statusForPeriod = count => count > 0
+      ? { code: 'SENT', label: 'Sudah Mengirim' }
+      : { code: 'NOT_SENT', label: 'Belum Mengirim' };
+
+    const rows = Object.keys(locations).map(key => {
+      const stat = locations[key];
+      const daysSinceSounding = calcDaysSince(stat.lastSoundingEpoch);
+      const daysSinceFm = calcDaysSince(stat.lastFmEpoch);
+      const submissionStatus = statusForPeriod(stat.totalPeriod);
+      const soundingStatus = statusForPeriod(stat.soundingPeriod);
+      const fmStatus = statusForPeriod(stat.fmPeriod);
+      const soundingRate = Math.min(100, Math.round((stat.soundingPeriod / days) * 100));
+      const fmRate = Math.min(100, Math.round((stat.fmPeriod / days) * 100));
+      const alertScore =
+        (submissionStatus.code === 'NOT_SENT' ? 1000000 : 0) +
+        (soundingStatus.code === 'NOT_SENT' ? 100000 : 0) +
+        (fmStatus.code === 'NOT_SENT' ? 10000 : 0) +
+        Math.max(
+          daysSinceSounding === null ? 9999 : daysSinceSounding,
+          daysSinceFm === null ? 9999 : daysSinceFm
+        );
+
+      return {
+        category: stat.category,
+        location: stat.location,
+        totalPeriod: stat.totalPeriod,
+        soundingPeriod: stat.soundingPeriod,
+        fmPeriod: stat.fmPeriod,
+        itemPeriod: stat.itemPeriod,
+        fmValuePeriod: stat.fmValuePeriod,
+        soundingRate: soundingRate,
+        fmRate: fmRate,
+        lastSubmission: formatHistoryEpoch_(stat.lastSubmissionEpoch, true),
+        lastSounding: formatHistoryEpoch_(stat.lastSoundingEpoch, true),
+        lastFm: formatHistoryEpoch_(stat.lastFmEpoch, true),
+        daysSinceSounding: daysSinceSounding,
+        daysSinceFm: daysSinceFm,
+        submissionStatus: submissionStatus,
+        soundingStatus: soundingStatus,
+        fmStatus: fmStatus,
+        lastOperator: stat.lastOperator,
+        lastShift: stat.lastShift,
+        alertScore: alertScore,
+        neverSubmitted: !stat.lastSubmissionEpoch
+      };
+    });
+
+    rows.sort((a, b) => {
+      if (b.alertScore !== a.alertScore) return b.alertScore - a.alertScore;
+      if (a.totalPeriod !== b.totalPeriod) return a.totalPeriod - b.totalPeriod;
+      return a.location.localeCompare(b.location);
+    });
+
+    const summary = {
+      totalLocations: rows.length,
+      totalTruck: rows.filter(row => row.category === 'Lube Truck').length,
+      totalStorage: rows.filter(row => row.category === 'Lube Storage').length,
+      submittedUnits: rows.filter(row => row.submissionStatus.code === 'SENT').length,
+      notSubmittedUnits: rows.filter(row => row.submissionStatus.code === 'NOT_SENT').length,
+      submittedSounding: rows.filter(row => row.soundingStatus.code === 'SENT').length,
+      notSubmittedSounding: rows.filter(row => row.soundingStatus.code === 'NOT_SENT').length,
+      submittedFm: rows.filter(row => row.fmStatus.code === 'SENT').length,
+      notSubmittedFm: rows.filter(row => row.fmStatus.code === 'NOT_SENT').length,
+      neverSubmitted: rows.filter(row => row.neverSubmitted).length,
+      transactionsInPeriod: rows.reduce((sum, row) => sum + row.totalPeriod, 0),
+      totalTransactionsAll: totalTransactionsAll
+    };
+
+    return {
+      status: 'SUCCESS',
+      buildVersion: APP_BUILD_VERSION,
+      generatedAt: Utilities.formatDate(now, timezone, 'dd/MM/yyyy HH:mm:ss'),
+      periodDays: days,
+      periodStart: formatComplianceIsoDate_(periodStartDate),
+      periodEnd: formatComplianceIsoDate_(periodEndDate),
+      periodLabel: periodLabel,
+      definition: 'Periode ' + periodLabel + ' | Sudah Mengirim = terdapat minimal 1 transaksi pada periode. Belum Mengirim = tidak ada transaksi pada periode.',
+      summary: summary,
+      rows: rows,
+      topTruck: rows.filter(row => row.category === 'Lube Truck' && (row.submissionStatus.code !== 'SENT' || row.soundingStatus.code !== 'SENT' || row.fmStatus.code !== 'SENT')).slice(0, 10),
+      topStorage: rows.filter(row => row.category === 'Lube Storage' && (row.submissionStatus.code !== 'SENT' || row.soundingStatus.code !== 'SENT' || row.fmStatus.code !== 'SENT')).slice(0, 10)
+    };
+  } catch (error) {
+    return {
+      status: 'ERROR',
+      buildVersion: APP_BUILD_VERSION,
+      message: String(error && error.message || error),
+      summary: {},
+      rows: [],
+      topTruck: [],
+      topStorage: []
+    };
+  }
+}
+
+function deleteHistory(idTransaksi, deletePin) {
+  const lock = LockService.getScriptLock();
+  let lockAcquired = false;
+
+  try {
+    // Wajib divalidasi di server. Jangan hanya mengandalkan pemeriksaan di HTML.
+    if (String(deletePin || '').trim() !== HISTORY_DELETE_PIN) {
+      return { status: "ERROR", code: "INVALID_PIN", message: "PIN penghapusan salah. Data tidak dihapus." };
+    }
+
+    const transactionId = String(idTransaksi || '').trim();
+    if (!transactionId) {
+      throw new Error("ID transaksi tidak valid.");
+    }
+
+    lock.waitLock(30000);
+    lockAcquired = true;
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheetHeader = ss.getSheetByName("DATA_HEADER");
+    const sheetDetail = ss.getSheetByName("DATA_DETAIL");
+    let deletedHeaderRows = 0;
+    let deletedDetailRows = 0;
+
+    if(sheetHeader) {
+      const dataH = sheetHeader.getDataRange().getValues();
+      for(let i = dataH.length - 1; i >= 1; i--) {
+        if(String(dataH[i][0] || '').trim() === transactionId) {
+          sheetHeader.deleteRow(i + 1);
+          deletedHeaderRows++;
+        }
+      }
+    }
+
+    if(sheetDetail) {
+      const dataD = sheetDetail.getDataRange().getValues();
+      for(let i = dataD.length - 1; i >= 1; i--) {
+        if(String(dataD[i][0] || '').trim() === transactionId) {
+          sheetDetail.deleteRow(i + 1);
+          deletedDetailRows++;
+        }
+      }
+    }
+
+    if (deletedHeaderRows === 0 && deletedDetailRows === 0) {
+      return { status: "ERROR", code: "NOT_FOUND", message: "Transaksi tidak ditemukan atau sudah dihapus." };
+    }
+
+    CacheService.getScriptCache().remove("history_data_v2");
+    SpreadsheetApp.flush();
+    return {
+      status: "SUCCESS",
+      message: "Transaksi berhasil dihapus.",
+      deletedHeaderRows: deletedHeaderRows,
+      deletedDetailRows: deletedDetailRows
+    };
+  } catch(e) {
+    return { status: "ERROR", message: String(e && e.message || e) };
+  } finally {
+    if (lockAcquired) {
+      lock.releaseLock();
+    }
+  }
+}
+
+/**
+ * ==========================================
+ * RIWAYAT + STATUS PENGIRIMAN UNIT V9
+ * ==========================================
+ * Mengambil transaksi sesuai tanggal/shift sekaligus seluruh populasi unit.
+ * Data ini memungkinkan halaman Riwayat menampilkan unit yang belum mengirim,
+ * bukan hanya transaksi yang sudah tersimpan di DATA_HEADER.
+ */
+function getHistoryStatusOverview(filterDate, filterShift) {
+  try {
+    const dateText = String(filterDate || '').trim();
+    const shiftText = String(filterShift || '').trim();
+    let periodStart = 0;
+    let periodEnd = Number.MAX_SAFE_INTEGER;
+    let hasDateFilter = false;
+
+    if (dateText) {
+      const startDate = parseComplianceIsoDate_(dateText, false);
+      const endDate = parseComplianceIsoDate_(dateText, true);
+      if (!startDate || !endDate) {
+        throw new Error('Format tanggal riwayat tidak valid.');
+      }
+      periodStart = startDate.getTime();
+      periodEnd = endDate.getTime();
+      hasDateFilter = true;
+    }
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheetHeader = ss.getSheetByName('DATA_HEADER');
+    const sheetDetail = ss.getSheetByName('DATA_DETAIL');
+    if (!sheetHeader || !sheetDetail) {
+      throw new Error('Sheet DATA_HEADER atau DATA_DETAIL tidak ditemukan.');
+    }
+
+    const unitsByKey = {};
+    const ensureUnit = (category, location) => {
+      const cleanLocation = String(location || '').trim();
+      if (!cleanLocation) return null;
+      const cleanCategory = String(category || '').toLowerCase().indexOf('storage') !== -1
+        ? 'Lube Storage'
+        : 'Lube Truck';
+      const key = cleanCategory + '|' + cleanLocation;
+      if (!unitsByKey[key]) {
+        unitsByKey[key] = {
+          key: key,
+          kategori: cleanCategory,
+          lokasi: cleanLocation,
+          submitted: false,
+          transactionCount: 0
+        };
+      }
+      return unitsByKey[key];
+    };
+
+    const storageSheet = ss.getSheetByName('MAPPING_STORAGE');
+    if (storageSheet && storageSheet.getLastRow() > 1) {
+      storageSheet.getRange(2, 2, storageSheet.getLastRow() - 1, 1).getValues()
+        .forEach(row => ensureUnit('Lube Storage', row[0]));
+    }
+
+    const truckSheet = ss.getSheetByName('MAPPING_TRUCK');
+    if (truckSheet && truckSheet.getLastRow() > 1) {
+      truckSheet.getRange(2, 2, truckSheet.getLastRow() - 1, 1).getValues()
+        .forEach(row => ensureUnit('Lube Truck', row[0]));
+    }
+
+    const matchedHeaders = [];
+    if (sheetHeader.getLastRow() > 1) {
+      const headerData = sheetHeader.getRange(
+        2,
+        1,
+        sheetHeader.getLastRow() - 1,
+        Math.max(9, sheetHeader.getLastColumn())
+      ).getValues();
+
+      headerData.forEach(row => {
+        const id = String(row[0] || '').trim();
+        const categoryText = String(row[1] || '').trim();
+        const category = categoryText.toLowerCase().indexOf('storage') !== -1
+          ? 'Lube Storage'
+          : 'Lube Truck';
+        const location = String(row[7] || '').trim();
+        if (!id || !location) return;
+
+        // Unit yang pernah muncul di transaksi tetap dimasukkan walaupun mapping-nya berubah.
+        ensureUnit(category, location);
+
+        const epoch = normalizeHistoryEpoch_(row[2], row[3], row[4]);
+        if (!epoch) return;
+        if (hasDateFilter && (epoch < periodStart || epoch > periodEnd)) return;
+        if (shiftText && String(row[6] || '').trim() !== shiftText) return;
+
+        matchedHeaders.push({
+          row: row,
+          id: id,
+          category: category,
+          location: location,
+          epoch: epoch
+        });
+      });
+    }
+
+    matchedHeaders.sort((a, b) => b.epoch - a.epoch);
+    const selectedHeaders = hasDateFilter
+      ? matchedHeaders.slice(0, 1000)
+      : matchedHeaders.slice(0, 100);
+
+    const selectedIds = {};
+    selectedHeaders.forEach(item => { selectedIds[item.id] = true; });
+
+    const detailsMap = {};
+    if (sheetDetail.getLastRow() > 1 && selectedHeaders.length > 0) {
+      const detailData = sheetDetail.getRange(
+        2,
+        1,
+        sheetDetail.getLastRow() - 1,
+        Math.max(11, sheetDetail.getLastColumn())
+      ).getValues();
+
+      detailData.forEach(row => {
+        const id = String(row[0] || '').trim();
+        if (!id || !selectedIds[id]) return;
+        if (!detailsMap[id]) detailsMap[id] = [];
+        const flowmeters = [];
+        for (let column = 5; column <= 10; column++) {
+          const value = row[column];
+          if (value !== '' && value !== null && value !== undefined) {
+            flowmeters.push(String(value));
+          }
+        }
+        detailsMap[id].push({
+          material: String(row[1] || '') + ' - ' + String(row[2] || ''),
+          sounding: row[3] !== '' && row[3] !== null && row[3] !== undefined ? String(row[3]) : '',
+          qtyTera: row[4] !== '' && row[4] !== null && row[4] !== undefined ? String(row[4]) : '',
+          flowmeters: flowmeters
+        });
+      });
+    }
+
+    const transactions = selectedHeaders.map(item => {
+      const row = item.row;
+      const evidenceLinks = parseEvidenceLinks_(row[8]);
+      const unit = ensureUnit(item.category, item.location);
+      if (unit) {
+        unit.submitted = true;
+        unit.transactionCount++;
+      }
+      return {
+        idTransaksi: item.id,
+        kategori: item.category,
+        timestampRaw: item.epoch,
+        timestamp: formatHistoryEpoch_(item.epoch, true),
+        operator: String(row[5] || ''),
+        shift: String(row[6] || ''),
+        lokasi: item.location,
+        linkEviden: evidenceLinks.length ? evidenceLinks[evidenceLinks.length - 1] : '',
+        evidenceLinks: evidenceLinks,
+        rowCount: detailsMap[item.id] ? detailsMap[item.id].length : 0,
+        details: detailsMap[item.id] || [],
+        submissionStatus: 'SENT',
+        isPlaceholder: false
+      };
+    });
+
+    const units = Object.keys(unitsByKey).map(key => unitsByKey[key]);
+    units.sort((a, b) => {
+      if (a.kategori !== b.kategori) return a.kategori.localeCompare(b.kategori);
+      return a.lokasi.localeCompare(b.lokasi);
+    });
+
+    return {
+      status: 'SUCCESS',
+      buildVersion: APP_BUILD_VERSION,
+      filterDate: dateText,
+      filterShift: shiftText,
+      transactions: transactions,
+      units: units,
+      summary: {
+        totalUnits: units.length,
+        submittedUnits: units.filter(unit => unit.submitted).length,
+        notSubmittedUnits: units.filter(unit => !unit.submitted).length,
+        transactionRows: transactions.length
+      }
+    };
+  } catch (error) {
+    return {
+      status: 'ERROR',
+      buildVersion: APP_BUILD_VERSION,
+      message: String(error && error.message || error),
+      transactions: [],
+      units: [],
+      summary: {}
+    };
+  }
+}
+
