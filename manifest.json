@@ -1,18 +1,25 @@
 {
   "name": "Lube Operations Dashboard",
   "short_name": "LubeOps",
-  "description": "Aplikasi Operasional Lube Dashboard",
+  "description": "Aplikasi Operasional Lube",
   "start_url": "/",
+  "id": "/",
   "display": "standalone",
   "background_color": "#1d1517",
   "theme_color": "#251b1d",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c2/GitHub_Invertocat_Logo.svg/512px-GitHub_Invertocat_Logo.svg.png",
+      "src": "https://dummyimage.com/192x192/251b1d/ffffff.png&text=LubeOps",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://dummyimage.com/512x512/251b1d/ffffff.png&text=LubeOps",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "maskable"
     }
   ]
 }
