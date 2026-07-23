@@ -8,10 +8,11 @@
   "orientation": "portrait",
   "icons": [
     {
-      "src": "https://www.google.com/imgres?q=gambar%20%20logo%20lube%20truk%20png&imgurl=https%3A%2F%2Fw7.pngwing.com%2Fpngs%2F820%2F377%2Fpng-transparent-car-nicholtrackt-s-r-o-mr-lube-motor-oil-car-service-retail-logo.png&imgrefurl=https%3A%2F%2Fwww.pngwing.com%2Fid%2Ffree-png-pfjre&docid=eaiQWlY-MUePiM&tbnid=8HM1QgIysbt3uM&vet=12ahUKEwiksqDoiOmVAxXF7TgGHe0bEOwQnPAOegUI0AQQAA..i&w=920&h=540&hcb=2&ved=2ahUKEwiksqDoiOmVAxXF7TgGHe0bEOwQnPAOegUI0AQQAA",
+      "src": "https://www.google.com/imgres?q=gambar%20%20logo%20lube%20truk%20png&amp;imgurl=https%3A%2F%2Fw7.pngwing.com%2Fpngs%2F820%2F377%2Fpng-transparent-car-nicholtrackt-s-r-o-mr-lube-motor-oil-car-service-retail-logo.png&amp;imgrefurl=https%3A%2F%2Fwww.pngwing.com%2Fid%2Ffree-png-pfjre&amp;docid=eaiQWlY-MUePiM&amp;tbnid=8HM1QgIysbt3uM&amp;vet=12ahUKEwiksqDoiOmVAxXF7TgGHe0bEOwQnPAOegUI0AQQAA..i&amp;w=920&amp;h=540&amp;hcb=2&amp;ved=2ahUKEwiksqDoiOmVAxXF7TgGHe0bEOwQnPAOegUI0AQQAA",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "description": "\"Aplikasi Operasional Lube Dashboard\"."
 }
