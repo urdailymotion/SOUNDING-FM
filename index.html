@@ -1,29 +1,47 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Lube Operations Dashboard</title>
   
-  <title>"OGSC SOUNDING & FM"</title> 
-
+  <!-- Memanggil file manifest untuk PWA/APK -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#251b1d">
+  
   <style>
-    body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden; /* Biar ga ada scrollbar */
-      background-color: #0d1117; /* Warna background gelap biar pas loading ga silau */
+    body, html { 
+      margin: 0; 
+      padding: 0; 
+      height: 100%; 
+      overflow: hidden; 
+      background-color: #1d1517; 
     }
-    iframe {
-      border: none;
-      width: 100vw;
-      height: 100vh;
-      display: block;
+    iframe { 
+      width: 100%; 
+      height: 100%; 
+      border: none; 
     }
   </style>
 </head>
 <body>
+  <!-- Iframe yang mengarah ke URL Apps Script kamu -->
+  <!-- allow="camera" sangat penting karena aplikasimu punya fitur foto eviden -->
+  <iframe 
+    src="https://script.google.com/macros/s/AKfycbx6VtZsspZ7HLYEDwsQqFcmPQhL8DefKl_uAJVtWtiCVmdtcjx7dhLTk7DJr578699HRA/exec" 
+    allow="camera; microphone; geolocation"
+    frameborder="0">
+  </iframe>
 
-  <iframe src="https://script.google.com/a/macros/ppa.co.id/s/AKfycbx6VtZsspZ7HLYEDwsQqFcmPQhL8DefKl_uAJVtWtiCVmdtcjx7dhLTk7DJr578699HRA/exec"></iframe>
-
+  <!-- Registrasi Service Worker -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js')
+          .then(reg => console.log('Service Worker berhasil terdaftar', reg))
+          .catch(err => console.log('Gagal mendaftar Service Worker', err));
+      });
+    }
+  </script>
 </body>
 </html>
